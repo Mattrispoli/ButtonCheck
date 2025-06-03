@@ -11,30 +11,27 @@
 #include "freertos/task.h"
 #include "driver/gpio.h"
 
-#define GPIO_INPUT GPIO_NUM_17
+#define MSG_QUEUE_LENGTH 10
+#define MSG_MAX_LEN 64
+
+QueueHandle_t msg_queue;
+
+#define LED_ONE GPIO_NUM_18 //Button Off
+#define LED_TWO GPIO_NUM_16 // Button on
+
+static const char *TAG = "ESP_NOW Rx";
+
+void OnDataRecv(const uint8_t *mac_addr, const uint8_t *msg, int len) {
+    char macStr[18];
+    snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
+             mac_addr[0], mac_addr[1], mac_addr[2],
+             mac_addr[3], mac_addr[4], mac_addr[5]);
+    ESP_LOGI(TAG, "Data: %.*s", len, msg);
 
 
-static const char *TAG = "ESP_NOW";
-uint8_t broadcastAddress[] = {0xEC, 0xC9, 0xFF, 0xE2, 0x5F, 0x60};
-
-
-esp_now_peer_info_t peerInfo;
-
-void init_gpio_input()
-{
-    gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << GPIO_INPUT),
-        .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,   
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE
-    };
-    gpio_config(&io_conf);
-}
-
-void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-  printf("\r\nLast Packet Send Status:\t");
-  printf(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail\n");
+    char safe_msg[MSG_MAX_LEN] = {0};
+    snprintf(safe_msg, MSG_MAX_LEN, "%.*s", len < MSG_MAX_LEN ? len : MSG_MAX_LEN - 1, (char*)msg);
+    xQueueSend(msg_queue, safe_msg, portMAX_DELAY);
 }
 
 void init_wifi(void) {
@@ -48,52 +45,42 @@ void init_wifi(void) {
     ESP_ERROR_CHECK(esp_wifi_start());
 }
 
-void sendMsg(void *pvParameter){
+void receiveMsg(void *pvParameter){
     while(1){
-        const char *message;
-        if (gpio_get_level(GPIO_INPUT)!=0){
-            message = "999999";
-            
+        char rxMsg[MSG_MAX_LEN];
+        if (xQueueReceive(msg_queue, rxMsg, portMAX_DELAY) == pdTRUE){
+            if (strcmp(rxMsg, "999999") == 0){
+                gpio_set_level(LED_ONE, 1);
+                gpio_set_level(LED_TWO, 0);
+            }
+            else{
+                gpio_set_level(LED_ONE, 0);
+                gpio_set_level(LED_TWO, 1);
+            }
         }
-        else{
-            message = "000000";
-        }
-        printf("%s\n", message);
-        ESP_LOGI(TAG, "GPIO level: %d", gpio_get_level(GPIO_INPUT));
-        esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *)message, strlen(message));
-        if (result == ESP_OK) {
-            ESP_LOGI(TAG, "Sent: %s", message);
-        } else {
-            ESP_LOGE(TAG, "Send error: %s", esp_err_to_name(result));
-        }
-        vTaskDelay(pdMS_TO_TICKS(1000));
+
+
     }
+
+
 }
 
 void app_main(void)
 {
     ESP_ERROR_CHECK(nvs_flash_init());
+    msg_queue = xQueueCreate(10, sizeof(char) * MSG_MAX_LEN);
+    gpio_set_direction(LED_ONE, GPIO_MODE_OUTPUT);
+    gpio_set_direction(LED_TWO, GPIO_MODE_OUTPUT);
+
     init_wifi();
 
-
-    if (esp_now_init() != ESP_OK) {
-        ESP_LOGE(TAG, "Error initializing ESP-NOW");
+    if (esp_now_init() != ESP_OK){
+        ESP_LOGE(TAG, "Error initializing ESP NOW");
         return;
     }
-    esp_now_register_send_cb(OnDataSent); 
-    esp_now_peer_info_t peerInfo = {0};
-    memcpy(peerInfo.peer_addr, broadcastAddress,6);
-    peerInfo.channel = 0;  
-    peerInfo.encrypt = false;
-    if (!esp_now_is_peer_exist(peerInfo.peer_addr)) {
-        if (esp_now_add_peer(&peerInfo) != ESP_OK){
-            ESP_LOGE(TAG, "Failed to add peer");
-            return;
-        }
-    }
-    xTaskCreate(sendMsg, "send_loop", 2048, NULL, 1, NULL);
-    
-    
-    
+    esp_now_register_recv_cb(OnDataRecv);
 
+    ESP_LOGI(TAG, "ESP-NOW Receiver Initialized");
+
+    xTaskCreate(receiveMsg, "Message",2048, NULL, 1, NULL);
 }
