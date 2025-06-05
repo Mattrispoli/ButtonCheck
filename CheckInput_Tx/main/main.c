@@ -58,15 +58,11 @@ void sendMsg(void *pvParameter){
         else{
             message = "000000";
         }
-        printf("%s\n", message);
-        ESP_LOGI(TAG, "GPIO level: %d", gpio_get_level(GPIO_INPUT));
         esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *)message, strlen(message));
-        if (result == ESP_OK) {
-            ESP_LOGI(TAG, "Sent: %s", message);
-        } else {
+        if (result != ESP_OK) {
             ESP_LOGE(TAG, "Send error: %s", esp_err_to_name(result));
         }
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
 
