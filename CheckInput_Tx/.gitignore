@@ -1,3 +1,55 @@
-build/
-sdkconfig
-sdkconfig.old
+# ESP-IDF build and configuration files
+/build/
+/sdkconfig
+/sdkconfig.old
+/sdkconfig.defaults
+/sdkconfig.ci
+/sdkconfig.rename
+/CMakeLists.txt.user
+
+# Compiled object files, libraries, executables
+*.o
+*.d
+*.a
+*.so
+*.bin
+*.elf
+*.map
+*.hex
+
+# ESP-IDF Python environment
+.venv/
+env/
+venv/
+pip-selfcheck.json
+
+# ESP-IDF tools
+dist/
+__pycache__/
+*.pyc
+
+# ESP-IDF flash and partition images
+*.img
+*.bin
+*.ota
+*.factory.bin
+
+# ESP-IDF logs and traces
+*.log
+*.trc
+
+# VS Code settings
+.vscode/
+
+# CLion/JetBrains IDE settings
+.idea/
+
+# macOS system files
+.DS_Store
+
+# Windows system files
+Thumbs.db
+
+# Other
+*.bak
+*.swp
