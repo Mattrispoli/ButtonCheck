@@ -20,22 +20,36 @@ QueueHandle_t msg_queue;
 int64_t timeCheck;
 
 
-#define LED_ONE GPIO_NUM_18 //Button Off
-#define LED_TWO GPIO_NUM_16 // Button on
+#define LED_RIGHT GPIO_NUM_18 
+#define LED_MID GPIO_NUM_16 
+#define LED_LEFT GPIO_NUM_19
+
+
 
 static const char *TAG = "ESP_NOW Rx";
 
+typedef struct button_status{
+    bool left;
+    bool right;
+} button_status;
+
 void OnDataRecv(const uint8_t *mac_addr, const uint8_t *msg, int len) {
+    if (len != sizeof(button_status)) {
+        ESP_LOGW(TAG, "Received unexpected data length: %d", len);
+        return;
+    }
+
+    button_status buttons;
     char macStr[18];
     snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
              mac_addr[0], mac_addr[1], mac_addr[2],
              mac_addr[3], mac_addr[4], mac_addr[5]);
-    ESP_LOGI(TAG, "Data: %.*s", len, msg);
 
 
-    char safe_msg[MSG_MAX_LEN] = {0};
-    snprintf(safe_msg, MSG_MAX_LEN, "%.*s", len < MSG_MAX_LEN ? len : MSG_MAX_LEN - 1, (char*)msg);
-    xQueueSend(msg_queue, safe_msg, portMAX_DELAY);
+    memcpy(&buttons, msg, sizeof(button_status));  // Safe copy
+
+    xQueueSend(msg_queue, &buttons, portMAX_DELAY);
+
 }
 
 
@@ -54,17 +68,26 @@ void init_wifi(void) {
 
 void receiveMsg(void *pvParameter){
     while(1){
-        char rxMsg[MSG_MAX_LEN];
-        if (xQueueReceive(msg_queue, rxMsg, portMAX_DELAY) == pdTRUE){
-            if (strcmp(rxMsg, "999999") == 0){
-                gpio_set_level(LED_ONE, 1);
-                gpio_set_level(LED_TWO, 0);
+        button_status recv_status;
+        if (xQueueReceive(msg_queue, &recv_status, portMAX_DELAY) == pdTRUE){
+            if (recv_status.left == 0 && recv_status.right ==0){
+                gpio_set_level(LED_MID, 0);
+                gpio_set_level(LED_LEFT, 0);
+                gpio_set_level(LED_RIGHT, 0);
+            }else if (recv_status.left == 1 && recv_status.right ==1){
+                gpio_set_level(LED_MID, 1);
+                gpio_set_level(LED_LEFT, 0);
+                gpio_set_level(LED_RIGHT, 0);
                 timeCheck = esp_timer_get_time();
-            }
-            else if(strcmp(rxMsg, "000000")==0){
-                gpio_set_level(LED_ONE, 0);
-                gpio_set_level(LED_TWO, 1);
+            }else if(recv_status.left == 1){
+                gpio_set_level(LED_MID, 0);
+                gpio_set_level(LED_LEFT, 1);
+                gpio_set_level(LED_RIGHT, 0);
                 timeCheck = esp_timer_get_time();
+            }else if(recv_status.right == 1){
+                gpio_set_level(LED_MID, 0);
+                gpio_set_level(LED_LEFT, 0);
+                gpio_set_level(LED_RIGHT, 1);
             }
         }
     }
@@ -75,8 +98,10 @@ void status_check(void *pvParameter){
         if (esp_timer_get_time()-timeCheck>3000000){
             if(!lost){
             ESP_LOGI(TAG, "Connection Lost\n");
-            gpio_set_level(LED_ONE,0);
-            gpio_set_level(LED_TWO,1);
+            gpio_set_level(LED_MID,0);
+            gpio_set_level(LED_LEFT,0);
+            gpio_set_level(LED_RIGHT,0);
+
             lost = true;
             
 
@@ -92,9 +117,11 @@ void app_main(void)
 {
     timeCheck = esp_timer_get_time();
     ESP_ERROR_CHECK(nvs_flash_init());
-    msg_queue = xQueueCreate(10, sizeof(char) * MSG_MAX_LEN);
-    gpio_set_direction(LED_ONE, GPIO_MODE_OUTPUT);
-    gpio_set_direction(LED_TWO, GPIO_MODE_OUTPUT);
+    msg_queue = xQueueCreate(10, sizeof(button_status));
+    gpio_set_direction(LED_MID, GPIO_MODE_OUTPUT);
+    gpio_set_direction(LED_LEFT, GPIO_MODE_OUTPUT);
+    gpio_set_direction(LED_RIGHT, GPIO_MODE_OUTPUT);
+
 
     init_wifi();
 
