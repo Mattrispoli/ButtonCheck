@@ -2,7 +2,7 @@
 /build/
 /sdkconfig
 /sdkconfig.old
-/sdkconfig.defaults
+
 /sdkconfig.ci
 /sdkconfig.rename
 /CMakeLists.txt.user
